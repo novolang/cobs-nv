@@ -112,7 +112,7 @@ and a receiver holding half a frame should wait for the rest.
 ## Tests
 
 ```
-novo test src/cobs_tests.nv
+novo test tests/cobs_tests.nv
 ```
 
 The vectors are Cheshire and Baker's own table from the paper that

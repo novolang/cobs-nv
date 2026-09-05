@@ -2,7 +2,7 @@
 // ways a frame can be malformed, and the round trip.
 //
 // Run from the package directory:
-//   novo test src/cobs_tests.nv
+//   novo test tests/cobs_tests.nv
 //
 // The vectors in `test_the_paper_examples` are Cheshire and Baker's
 // own table, including the three 254-byte cases that decide whether an
