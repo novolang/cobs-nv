@@ -1,3 +1,5 @@
+> Developed in the novo-lang monorepo under `orbit/cobs-nv`, which is the source of truth until this package graduates out of it.  This repository is a mirror: it is where CI runs and where releases are tagged, and changes are made upstream.
+
 # cobs-nv
 
 Consistent Overhead Byte Stuffing. A stream of frames needs a
