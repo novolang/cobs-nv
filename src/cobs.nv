@@ -1,0 +1,186 @@
+// COBS — Consistent Overhead Byte Stuffing, the framing a serial link
+// uses when it wants one byte value to mean "end of frame".
+//
+// What it is.  A stream of frames needs a delimiter, and a delimiter
+// only works if it cannot occur inside a frame.  COBS removes every
+// `0x00` from a payload so that `0x00` can be the delimiter.  It does
+// so by replacing each zero with the distance to the next one: the
+// encoded stream is a run of blocks, each led by a length byte saying
+// how many bytes it covers, and the zero the block stood for is put
+// back by the decoder rather than carried on the wire.
+//
+// The name is the guarantee.  The overhead is at most one byte per 254
+// bytes of payload plus one, whatever the data — there is no input that
+// doubles a frame, which is what makes COBS usable on a link whose
+// buffers are sized in advance.
+//
+// What it does.  `encode` and `decode` both ways, `max_encoded_len` for
+// the buffer to reserve, and a malformed frame reported as a value.
+//
+// How to use it.  The in-place pair writes into a cursor the caller
+// owns and allocates nothing:
+//
+//     var out = bytes.cursor_le(bytes.zeros(cobs.max_encoded_len(n)))
+//     let written = cobs.encode_into(out, payload)
+//
+// The allocating pair sizes its own buffer:
+//
+//     let framed = cobs.encode(payload)
+//
+// What it costs.  One pass, one output byte per input byte plus the
+// block headers, and one back-patch per block — a block's length is
+// only known once the block ends, so the encoder reserves the byte,
+// keeps writing, and seeks back to fill it in.  The seek costs nothing:
+// the buffer is the cursor's own, so the patch is a write in place.
+//
+// This module writes and reads bytes and nothing else: no delimiter is
+// added and none is expected.  Appending the `0x00` that separates
+// frames belongs to the caller, who is usually placing it inside a
+// larger buffer anyway.
+
+use std.bytes
+
+// The most bytes one block can cover, itself included.  A header of
+// `0xff` means a full block that does NOT stand for a zero, so 254 is
+// the most payload one block can carry.
+fn full_block() -> Int
+    0xff
+
+// The most bytes `encode` can produce from `len` bytes of payload: one
+// header per full block, plus the one every frame opens with.  This is
+// the guarantee the format's name is about, and it is exact — an input
+// with no zeros at all reaches it.
+pub fn max_encoded_len(len: Int) -> Int
+    len + len / 254 + 1
+
+// What went wrong while decoding, and where.  Both are input faults, so
+// both are values: a frame arriving off a wire is data, and refusing to
+// answer is a result while crashing is not.
+pub enum CobsError
+    // A `0x00` inside the encoded stream, which the encoding never
+    // produces — the delimiter arrived early, or the frame is corrupt.
+    ZeroInFrame(at: Int)
+    // A block header covering more bytes than the frame has left.
+    Truncated(at: Int)
+
+impl Error for CobsError
+    fn message(self) -> Str
+        match self
+            ZeroInFrame(at) => "cobs: a zero byte at offset ${at}, which an encoded frame never contains"
+            Truncated(at)   => "cobs: the block header at offset ${at} covers more bytes than the frame has"
+
+// `src` encoded at the cursor; the byte count is the return.  Writes
+// into the caller's buffer and allocates nothing.
+//
+// The cursor must have `max_encoded_len(bytes.len(src))` bytes of room.
+// Too little is a panic, exactly as it is for `c.put_u8` and for
+// `xs[i]`: a buffer the caller sized wrong is a mistake in the program,
+// not a value the program should carry around.
+pub fn encode_into(mut dst: Cursor, src: Bytes) -> Int
+    let len = bytes.len(src)
+    let start = dst.pos()
+    // The offset of the header byte reserved for the block being
+    // written, and the count that will go into it.  A header counts
+    // itself, so a block that has covered nothing yet is 1.
+    var header_at = dst.pos()
+    dst.skip(1)
+    var covered = 1
+    for i in 0 .. len
+        let b = bytes.byte_at(src, i) ?? 0
+        if b == 0
+            // A zero ENDS the block: the header is what stands for it,
+            // and the zero itself never goes on the wire.
+            patch(dst, header_at, covered)
+            header_at = dst.pos()
+            dst.skip(1)
+            covered = 1
+        else
+            dst.put_u8(b)
+            covered = covered + 1
+            // A block cannot cover more than 0xff bytes.  The next
+            // header is only opened when there is something for it to
+            // cover: a full block at the very end of the input stands
+            // for no zero and needs no successor.
+            if covered == full_block() and i + 1 < len
+                patch(dst, header_at, covered)
+                header_at = dst.pos()
+                dst.skip(1)
+                covered = 1
+    patch(dst, header_at, covered)
+    dst.pos() - start
+
+// Write `covered` into the header byte reserved at `header_at` and put
+// the cursor back where it was.  The back-patch every length-prefixed
+// format needs.
+fn patch(mut dst: Cursor, header_at: Int, covered: Int)
+    let here = dst.pos()
+    dst.seek(header_at)
+    dst.put_u8(covered)
+    dst.seek(here)
+
+// `src` encoded as a fresh buffer of exactly the length it needed.  One
+// allocation, for the caller assembling a message rather than filling a
+// frame.
+pub fn encode(src: Bytes) -> Bytes
+    var c = bytes.cursor_le(bytes.zeros(max_encoded_len(bytes.len(src))))
+    let n = encode_into(c, src)
+    bytes.slice(c.finish(), 0, n)
+
+// `wire` decoded at the cursor; the byte count is the return.  Writes
+// into the caller's buffer and allocates nothing.
+//
+// `bytes.len(wire)` bytes of room is always enough, because decoding
+// never grows a frame.
+pub fn decode_into(mut dst: Cursor, wire: Bytes) -> Result<Int, CobsError>
+    let len = bytes.len(wire)
+    let start = dst.pos()
+    var at = 0
+    var failure: ?CobsError = None
+    var more = len > 0
+    while more
+        let header = bytes.byte_at(wire, at) ?? 0
+        if header == 0
+            failure = Some(ZeroInFrame(at: at))
+            more = false
+        else if at + header > len
+            failure = Some(Truncated(at: at))
+            more = false
+        else
+            // A header counts itself, so `header - 1` bytes follow it.
+            let bad = copy_block(dst, wire, at + 1, at + header)
+            if bad >= 0
+                failure = Some(ZeroInFrame(at: bad))
+                more = false
+            else
+                at = at + header
+                more = at < len
+                // A full block is a run that continues and stands for
+                // no zero; every shorter one ended at a zero the
+                // encoder removed, and the decoder puts it back.
+                if more and header != full_block()
+                    dst.put_u8(0)
+    match failure
+        None    => Ok(dst.pos() - start)
+        Some(e) => Err(e)
+
+// `wire[from, to)` onto the cursor, stopping at the first `0x00` and
+// answering its offset — or -1 when the block was clean.  A zero inside
+// a block is the one byte an encoded frame cannot contain, so finding
+// one is the frame being wrong rather than a position to keep decoding
+// from.
+fn copy_block(mut dst: Cursor, wire: Bytes, from: Int, to: Int) -> Int
+    var bad = 0 - 1
+    for i in from .. to
+        if bad < 0
+            let b = bytes.byte_at(wire, i) ?? 0
+            if b == 0
+                bad = i
+            else
+                dst.put_u8(b)
+    bad
+
+// `wire` decoded as a fresh buffer of exactly the length it needed.
+pub fn decode(wire: Bytes) -> Result<Bytes, CobsError>
+    var c = bytes.cursor_le(bytes.zeros(bytes.len(wire) + 1))
+    let n = decode_into(c, wire)!
+    Ok(bytes.slice(c.finish(), 0, n))

@@ -1,0 +1,163 @@
+// cobs_tests.nv — the encoding examples from the COBS paper, the two
+// ways a frame can be malformed, and the round trip.
+//
+// Run from the package directory:
+//   novo test src/cobs_tests.nv
+//
+// The vectors in `test_the_paper_examples` are Cheshire and Baker's
+// own table, including the three 254-byte cases that decide whether an
+// implementation opens a block it does not need.  Those three are where
+// implementations of COBS actually differ from each other.
+
+use std.bytes
+use std.test
+use cobs
+
+// `hex` encoded, as lowercase hex — the shape a vector table is written
+// in.
+fn encoded(hex: Str) -> Str
+    bytes.to_hex(cobs.encode(bytes.from_hex(hex) ?? bytes.zeros(0)))
+
+// `hex` decoded, as lowercase hex, or the failure's message.
+fn decoded(hex: Str) -> Str
+    match cobs.decode(bytes.from_hex(hex) ?? bytes.zeros(0))
+        Ok(b)  => bytes.to_hex(b)
+        Err(e) => e.message()
+
+// A buffer of `n` bytes counting up from `first`, which is how the
+// paper's long examples are written.
+fn counting(first: Int, n: Int) -> Bytes
+    var c = bytes.cursor_le(bytes.zeros(n))
+    for i in 0 .. n
+        c.put_u8(first + i)
+    c.finish()
+
+@test
+fn test_the_paper_examples() [io]
+    test.assert_eq_str(encoded(""), "01")
+    test.assert_eq_str(encoded("00"), "0101")
+    test.assert_eq_str(encoded("0000"), "010101")
+    test.assert_eq_str(encoded("11220033"), "0311220233")
+    test.assert_eq_str(encoded("11223344"), "0511223344")
+    test.assert_eq_str(encoded("11000000"), "0211010101")
+
+@test
+fn test_the_paper_examples_round_trip() [io]
+    test.assert_eq_str(decoded("01"), "")
+    test.assert_eq_str(decoded("0101"), "00")
+    test.assert_eq_str(decoded("010101"), "0000")
+    test.assert_eq_str(decoded("0311220233"), "11220033")
+    test.assert_eq_str(decoded("0511223344"), "11223344")
+    test.assert_eq_str(decoded("0211010101"), "11000000")
+
+@test
+fn test_a_full_block_at_the_end_opens_no_successor() [io]
+    // 254 non-zero bytes fill one block exactly.  The paper's answer is
+    // 255 bytes — one header and the payload — and an implementation
+    // that opened a second block would write 256 and disagree with
+    // every other one on the wire.
+    let payload = counting(1, 254)
+    let wire = cobs.encode(payload)
+    test.assert_eq(bytes.len(wire), 255)
+    test.assert_eq(bytes.byte_at(wire, 0) ?? 0, 0xff)
+    test.assert_eq_str(decoded(bytes.to_hex(wire)), bytes.to_hex(payload))
+
+@test
+fn test_a_full_block_followed_by_more_opens_a_successor() [io]
+    // 255 non-zero bytes: the full block, then a second block for the
+    // one byte left over.  The paper's answer is 257 bytes.
+    let payload = counting(1, 255)
+    let wire = cobs.encode(payload)
+    test.assert_eq(bytes.len(wire), 257)
+    test.assert_eq(bytes.byte_at(wire, 0) ?? 0, 0xff)
+    test.assert_eq(bytes.byte_at(wire, 255) ?? 0, 0x2)
+    test.assert_eq_str(decoded(bytes.to_hex(wire)), bytes.to_hex(payload))
+
+@test
+fn test_a_leading_zero_before_a_full_block() [io]
+    // The paper's third long case: one zero, then 254 non-zero bytes.
+    // 256 bytes out, and the trailing block is again a full one that
+    // opens no successor.
+    var c = bytes.cursor_le(bytes.zeros(255))
+    c.put_u8(0)
+    c.put_bytes(counting(1, 254))
+    let payload = c.finish()
+    let wire = cobs.encode(payload)
+    test.assert_eq(bytes.len(wire), 256)
+    test.assert_eq_str(decoded(bytes.to_hex(wire)), bytes.to_hex(payload))
+
+@test
+fn test_an_encoded_frame_never_contains_a_zero() [io]
+    // The whole point of the format: whatever the payload, the encoded
+    // bytes are all non-zero, so `0x00` is free to delimit frames.
+    var c = bytes.cursor_le(bytes.zeros(600))
+    for i in 0 .. 600
+        c.put_u8(i % 3)
+    let wire = cobs.encode(c.finish())
+    for i in 0 .. bytes.len(wire)
+        test.case("byte ${i}")
+        test.assert_ne(bytes.byte_at(wire, i) ?? 0, 0)
+
+@test
+fn test_max_encoded_len_is_never_exceeded() [io]
+    // The bound the caller sizes a buffer from.  Zeros and non-zeros
+    // stress it in opposite directions, so both are checked.
+    for n in 0 .. 300
+        test.case("length ${n}")
+        test.assert_true(bytes.len(cobs.encode(counting(1, n))) <= cobs.max_encoded_len(n),
+                         "a zero-free payload exceeded the bound")
+        test.assert_true(bytes.len(cobs.encode(bytes.zeros(n))) <= cobs.max_encoded_len(n),
+                         "an all-zero payload exceeded the bound")
+
+@test
+fn test_round_trip_over_every_length_and_both_extremes() [io]
+    for n in 0 .. 300
+        test.case("length ${n}")
+        let counted = counting(1, n)
+        test.assert_eq_str(decoded(bytes.to_hex(cobs.encode(counted))), bytes.to_hex(counted))
+        let zeros = bytes.zeros(n)
+        test.assert_eq_str(decoded(bytes.to_hex(cobs.encode(zeros))), bytes.to_hex(zeros))
+
+@test
+fn test_a_zero_inside_a_frame_is_a_value() [io]
+    // A delimiter that arrived early, or a corrupt byte.
+    match cobs.decode(bytes.from_hex("03110022") ?? bytes.zeros(0))
+        Ok(b)  => test.fail("a frame with a zero in it decoded to ${bytes.to_hex(b)}")
+        Err(e) =>
+            match e
+                ZeroInFrame(at) => test.assert_eq(at, 2)
+                Truncated(at)   => test.fail("a zero reported as truncation at ${at}")
+
+@test
+fn test_a_zero_header_is_a_value() [io]
+    match cobs.decode(bytes.from_hex("001122") ?? bytes.zeros(0))
+        Ok(b)  => test.fail("a frame opening with a zero decoded to ${bytes.to_hex(b)}")
+        Err(e) =>
+            match e
+                ZeroInFrame(at) => test.assert_eq(at, 0)
+                Truncated(at)   => test.fail("a zero header reported as truncation at ${at}")
+
+@test
+fn test_a_header_pointing_past_the_end_is_a_value() [io]
+    match cobs.decode(bytes.from_hex("051122") ?? bytes.zeros(0))
+        Ok(b)  => test.fail("a truncated frame decoded to ${bytes.to_hex(b)}")
+        Err(e) =>
+            match e
+                Truncated(at)   => test.assert_eq(at, 0)
+                ZeroInFrame(at) => test.fail("truncation reported as a zero at ${at}")
+
+@test
+fn test_encode_into_and_decode_into_share_one_buffer() [io]
+    // The allocation-free path end to end: one buffer for the frame,
+    // one for the payload coming back, and no `Bytes` built in between.
+    let payload = bytes.from_hex("1100223300") ?? bytes.zeros(0)
+    var out = bytes.cursor_le(bytes.zeros(cobs.max_encoded_len(bytes.len(payload))))
+    let written = cobs.encode_into(out, payload)
+    let wire = bytes.slice(out.finish(), 0, written)
+    var back = bytes.cursor_le(bytes.zeros(bytes.len(wire)))
+    match cobs.decode_into(back, wire)
+        Err(e) => test.fail(e.message())
+        Ok(n)  =>
+            test.assert_eq(n, bytes.len(payload))
+            test.assert_eq_str(bytes.to_hex(bytes.slice(back.finish(), 0, n)),
+                               bytes.to_hex(payload))
