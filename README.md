@@ -29,13 +29,11 @@ novo pkg add cobs-nv
 
 ## What it gives you
 
-| Function | |
-|---|---|
-| `cobs.max_encoded_len(len: Int) -> Int` | the buffer to reserve for `len` bytes of payload |
-| `cobs.encode_into(dst: Cursor, src: Bytes) -> Int` | `src` encoded at the cursor; the byte count is the return |
-| `cobs.encode(src: Bytes) -> Bytes` | a fresh buffer of exactly the length it needed |
-| `cobs.decode_into(dst: Cursor, wire: Bytes) -> Result<Int, CobsError>` | `wire` decoded at the cursor |
-| `cobs.decode(wire: Bytes) -> Result<Bytes, CobsError>` | a fresh buffer of the payload |
+The API is on [the package's page](https://novo-lang.org/packages/cobs-nv),
+generated from these sources: every `pub` declaration with its signature,
+its effect row and the comment block written above it. A table of names
+here would be a second original, and the second original is the one that
+goes stale.
 
 `CobsError` has two variants, both input faults: `ZeroInFrame` when the
 encoded bytes contain a `0x00`, which the encoding never produces, and
