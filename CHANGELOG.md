@@ -4,6 +4,18 @@ Newest first.  Below `1.0.0` a breaking change bumps the **minor**
 number and a compatible one the **patch**; see [Version numbers in the
 Orbit package registry](https://novo-lang.org/docs/registry/semver.html).
 
+## Unreleased
+
+- **`max_encoded_len` no longer claims its bound is exact everywhere.**
+  It is reached exactly by a zero-free payload except when the payload
+  is a positive multiple of 254, where a full block ends the input,
+  opens no successor, and the encoding comes out one byte shorter than
+  the formula counted — 255 rather than 256 at 254 bytes, and the same
+  at every step of 254 after.  The bound was always sound (nothing
+  exceeds it, no caller ever sized a buffer too small); only the claim
+  of exactness was wrong.  A new test asserts both halves over every
+  length up to 800.  No code changed.
+
 ## 0.1.3
 
 Documentation: the reference is generated from the code, and the

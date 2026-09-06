@@ -43,11 +43,20 @@ fn full_block() -> Int
 // payload: one header per full block, plus the one every frame opens
 // with.
 //
-// This is the guarantee the format's name is about, and it is exact —
-// an input with no zeros at all reaches it, so a buffer this size is
-// never too small and never wasteful by more than a byte.  It does not
-// count the `0x00` delimiter, which this module neither writes nor
-// reads.
+// This is the guarantee the format's name is about.  A buffer this size
+// is never too small, and never wasteful by more than a byte.  An input
+// with no zeros in it reaches the bound exactly — **except** when `len`
+// is a positive multiple of 254, where the encoding is one byte
+// shorter.  There the last block is a full one at the very end of the
+// input: it stands for no zero, so it opens no successor (the rule
+// below, tested by exact length), while this formula has already
+// counted one.  So `max_encoded_len(254)` is 256 and `encode` writes
+// 255, and the same at 508, 762 and every step of 254 after.  Treat the
+// number as an upper bound, which is what a caller sizing a buffer
+// wants from it.
+//
+// It does not count the `0x00` delimiter, which this module neither
+// writes nor reads.
 //
 // ```novo
 // // One byte of overhead for a short frame, whatever is in it.

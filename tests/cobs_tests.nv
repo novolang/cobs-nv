@@ -98,6 +98,38 @@ fn test_an_encoded_frame_never_contains_a_zero() [io]
         test.case("byte ${i}")
         test.assert_ne(bytes.byte_at(wire, i) ?? 0, 0)
 
+// `n` bytes with no zero among them — the input that reaches the bound.
+// Cycles 1..254 rather than counting up from 1, so it stays zero-free
+// past 255 bytes.
+fn zero_free(n: Int) -> Bytes
+    var c = bytes.cursor_le(bytes.zeros(n))
+    for i in 0 .. n
+        c.put_u8(1 + (i % 254))
+    c.finish()
+
+@test
+fn test_the_bound_is_reached_except_at_a_whole_number_of_blocks() [io]
+    // `max_encoded_len` documents itself as reached exactly by a
+    // zero-free payload EXCEPT where the payload is a positive multiple
+    // of 254 — there the final block is full, needs no successor, and
+    // the encoder writes one byte less than the formula counted.
+    //
+    // The exception is the whole point of the assertion.  The comment
+    // used to claim the bound was exact everywhere, which the suite
+    // already contradicted two tests above without anybody joining the
+    // two facts up; a sentence with an exception in it is only as good
+    // as its exception, so both halves are pinned here.
+    for n in 0 .. 800
+        test.case("length ${n}")
+        let actual = bytes.len(cobs.encode(zero_free(n)))
+        let bound = cobs.max_encoded_len(n)
+        if n > 0 and n % 254 == 0
+            test.assert_eq(actual, bound - 1,
+                           "a whole number of blocks is one byte under the bound")
+        else
+            test.assert_eq(actual, bound,
+                           "a zero-free payload reaches the bound exactly")
+
 @test
 fn test_max_encoded_len_is_never_exceeded() [io]
     // The bound the caller sizes a buffer from.  Zeros and non-zeros
