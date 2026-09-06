@@ -1,4 +1,7 @@
-> Developed in the novo-lang monorepo under `orbit/cobs-nv`, which is the source of truth until this package graduates out of it.  This repository is a mirror: it is where CI runs and where releases are tagged, and changes are made upstream.
+> Developed and published from this repository.  `cobs-nv` began under
+> `orbit/cobs-nv` in the [novo-lang](https://github.com/novolang) monorepo
+> and graduated out of it with its history; issues and pull requests
+> belong here.
 
 # cobs-nv
 
