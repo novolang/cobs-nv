@@ -28,7 +28,7 @@ fn decoded(hex: Str) -> Str
 // paper's long examples are written.
 fn counting(first: Int, n: Int) -> Bytes
     var c = bytes.cursor_le(bytes.zeros(n))
-    for i in 0 .. n
+    for i in 0..n
         c.put_u8(first + i)
     c.finish()
 
@@ -91,10 +91,10 @@ fn test_an_encoded_frame_never_contains_a_zero() [io]
     // The whole point of the format: whatever the payload, the encoded
     // bytes are all non-zero, so `0x00` is free to delimit frames.
     var c = bytes.cursor_le(bytes.zeros(600))
-    for i in 0 .. 600
+    for i in 0..600
         c.put_u8(i % 3)
     let wire = cobs.encode(c.finish())
-    for i in 0 .. bytes.len(wire)
+    for i in 0..bytes.len(wire)
         test.case("byte ${i}")
         test.assert_ne(bytes.byte_at(wire, i) ?? 0, 0)
 
@@ -103,7 +103,7 @@ fn test_an_encoded_frame_never_contains_a_zero() [io]
 // past 255 bytes.
 fn zero_free(n: Int) -> Bytes
     var c = bytes.cursor_le(bytes.zeros(n))
-    for i in 0 .. n
+    for i in 0..n
         c.put_u8(1 + i % 254)
     c.finish()
 
@@ -119,7 +119,7 @@ fn test_the_bound_is_reached_except_at_a_whole_number_of_blocks() [io]
     // already contradicted two tests above without anybody joining the
     // two facts up; a sentence with an exception in it is only as good
     // as its exception, so both halves are pinned here.
-    for n in 0 .. 800
+    for n in 0..800
         test.case("length ${n}")
         let actual = bytes.len(cobs.encode(zero_free(n)))
         let bound = cobs.max_encoded_len(n)
@@ -134,7 +134,7 @@ fn test_the_bound_is_reached_except_at_a_whole_number_of_blocks() [io]
 fn test_max_encoded_len_is_never_exceeded() [io]
     // The bound the caller sizes a buffer from.  Zeros and non-zeros
     // stress it in opposite directions, so both are checked.
-    for n in 0 .. 300
+    for n in 0..300
         test.case("length ${n}")
         test.assert_true(bytes.len(cobs.encode(counting(1, n))) <= cobs.max_encoded_len(n),
                          "a zero-free payload exceeded the bound")
@@ -143,7 +143,7 @@ fn test_max_encoded_len_is_never_exceeded() [io]
 
 @test
 fn test_round_trip_over_every_length_and_both_extremes() [io]
-    for n in 0 .. 300
+    for n in 0..300
         test.case("length ${n}")
         let counted = counting(1, n)
         test.assert_eq_str(decoded(bytes.to_hex(cobs.encode(counted))), bytes.to_hex(counted))
