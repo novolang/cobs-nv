@@ -1,10 +1,11 @@
 [package]
 name        = "cobs-nv"
-version     = "0.1.3"
+version     = "0.1.4"
 description = "Consistent Overhead Byte Stuffing: removes every zero byte from a payload so that a zero can delimit frames on a serial link, at a cost of at most one byte per 254 and never more.  Encodes into a caller's buffer without allocating, and reports a malformed frame as a value."
 license     = "Apache-2.0"
 stability   = "experimental"
 category    = "encoding"
+layer       = "core"
 tags        = ["cobs", "framing", "serial", "embedded"]
 repository  = "https://github.com/novolang/cobs-nv"
 maintainers = ["novo-lang"]
