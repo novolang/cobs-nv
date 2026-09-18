@@ -1,6 +1,6 @@
 [package]
 name        = "cobs-nv"
-version     = "0.1.4"
+version     = "0.1.5"
 description = "Consistent Overhead Byte Stuffing: removes every zero byte from a payload so that a zero can delimit frames on a serial link, at a cost of at most one byte per 254 and never more.  Encodes into a caller's buffer without allocating, and reports a malformed frame as a value."
 license     = "Apache-2.0"
 stability   = "experimental"
@@ -11,11 +11,12 @@ repository  = "https://github.com/novolang/cobs-nv"
 maintainers = ["novo-lang"]
 main        = "src/main.nv"
 
-# The README is the package's one page, and its own first heading is the
-# package name — which says nothing in a list of this package's pages.
+# The README is the package's one page.  Its own first heading is the
+# package name, which says nothing in a list of this package's pages,
+# so the title below is what that list shows.
 [docs.pages]
 "README.md" = "Framing a byte stream with Consistent Overhead Byte Stuffing"
 
 [dependencies]
-# None.  std.bytes supplies the buffer and the cursor; the rest is the
-# block walk.
+# None.  `std.bytes` supplies the buffer and the cursor, and the rest
+# of the work is the walk over the blocks.
