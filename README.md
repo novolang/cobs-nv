@@ -127,7 +127,7 @@ use cobs
 use std.bytes
 
 // One frame into a transmit buffer, delimiter included.
-fn put_frame(out: Cursor, payload: Bytes) -> Int
+fn put_frame(var out: Cursor, payload: Bytes) -> Int
     let n = cobs.encode_into(out, payload)
     out.put_u8(0)
     n + 1

@@ -118,7 +118,7 @@ impl Error for CobsError
 // println("${n}")                                          // 4
 // println(bytes.to_hex(bytes.slice(out.finish(), 0, n)))   // 021102ff
 // ```
-pub fn encode_into(mut dst: Cursor, src: Bytes) -> Int
+pub fn encode_into(var dst: Cursor, src: Bytes) -> Int
     let len = bytes.len(src)
     let start = dst.pos()
     // The offset of the header byte reserved for the block being
@@ -154,7 +154,7 @@ pub fn encode_into(mut dst: Cursor, src: Bytes) -> Int
 // Write `covered` into the header byte reserved at `header_at` and put
 // the cursor back where it was.  This is the back-patch every
 // length-prefixed format needs.
-fn patch(mut dst: Cursor, header_at: Int, covered: Int)
+fn patch(var dst: Cursor, header_at: Int, covered: Int)
     let here = dst.pos()
     dst.seek(header_at)
     dst.put_u8(covered)
@@ -200,7 +200,7 @@ pub fn encode(src: Bytes) -> Bytes
 //     Err(e) => println(e.message())
 // // 3 1100ff
 // ```
-pub fn decode_into(mut dst: Cursor, wire: Bytes) -> Result<Int, CobsError>
+pub fn decode_into(var dst: Cursor, wire: Bytes) -> Result<Int, CobsError>
     let len = bytes.len(wire)
     let start = dst.pos()
     var at = 0
@@ -237,7 +237,7 @@ pub fn decode_into(mut dst: Cursor, wire: Bytes) -> Result<Int, CobsError>
 // a block is the one byte an encoded frame cannot contain, so finding
 // one is the frame being wrong rather than a position to keep decoding
 // from.
-fn copy_block(mut dst: Cursor, wire: Bytes, from: Int, to: Int) -> Int
+fn copy_block(var dst: Cursor, wire: Bytes, from: Int, to: Int) -> Int
     var bad = 0 - 1
     for i in from..to
         if bad < 0
